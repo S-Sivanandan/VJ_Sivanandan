@@ -14,13 +14,15 @@ interface SelectionTooltipProps {
   onAttach: () => void
 }
 
-function SelectionTooltip({ x, y, onAttach }: SelectionTooltipProps) {
+function SelectionTooltip({ x, y, onAttach, tooltipRef }: SelectionTooltipProps & { tooltipRef: React.RefObject<HTMLDivElement | null> }) {
   return (
     <div
+      ref={tooltipRef}
       style={{ left: x, top: y }}
       className="fixed z-50 -translate-x-1/2 -translate-y-full -mt-2 pointer-events-auto"
     >
       <button
+        data-testid="attach-thought-btn"
         onMouseDown={(e) => { e.preventDefault(); onAttach() }}
         className="flex items-center gap-1.5 bg-primary text-primary-foreground text-xs font-medium px-3 py-1.5 shadow-lg rounded-full hover:bg-primary/90 transition-colors"
       >
@@ -103,6 +105,7 @@ function ArticleDetail({ article, onBack }: ArticleDetailProps) {
   const [savingNote, setSavingNote] = useState(false)
   const [savedQuotes, setSavedQuotes] = useState<Set<string>>(new Set())
   const contentRef = useRef<HTMLDivElement>(null)
+  const tooltipRef = useRef<HTMLDivElement>(null)
 
   const handleMouseUp = useCallback(() => {
     const sel = window.getSelection()
@@ -115,18 +118,22 @@ function ArticleDetail({ article, onBack }: ArticleDetailProps) {
 
     const range = sel.getRangeAt(0)
     const rect = range.getBoundingClientRect()
-    setTooltip({ x: rect.left + rect.width / 2, y: rect.top + window.scrollY, quote })
+    // rect.top is viewport-relative; fixed positioning uses viewport coords directly
+    setTooltip({ x: rect.left + rect.width / 2, y: rect.top, quote })
   }, [])
 
   useEffect(() => {
     const dismiss = (e: MouseEvent) => {
-      if (tooltip && contentRef.current && !contentRef.current.contains(e.target as Node)) {
+      const target = e.target as Node
+      const inContent = contentRef.current?.contains(target)
+      const inTooltip = tooltipRef.current?.contains(target)
+      if (!inContent && !inTooltip) {
         setTooltip(null)
       }
     }
     document.addEventListener("mousedown", dismiss)
     return () => document.removeEventListener("mousedown", dismiss)
-  }, [tooltip])
+  }, [])
 
   const handleAttach = () => {
     if (!tooltip) return
@@ -180,27 +187,25 @@ function ArticleDetail({ article, onBack }: ArticleDetailProps) {
         <div onMouseUp={handleMouseUp} className="select-text space-y-0">
           {ARTICLE_PARAGRAPHS.map((para, i) => {
             const isHighlighted = savedQuotes.has(para)
-            const isAttaching = attachingQuote === para
             return (
-              <div key={i}>
-                <p
-                  className={`text-[15px] leading-[1.85] text-foreground mb-5 cursor-text transition-colors ${
-                    isHighlighted ? "bg-primary/8 -mx-1 px-1 rounded" : ""
-                  } ${i === 0 ? "first-letter:text-3xl first-letter:font-bold first-letter:float-left first-letter:mr-2 first-letter:mt-1 first-letter:leading-none" : ""}`}
-                >
-                  {para}
-                </p>
-                {isAttaching && (
-                  <AttachThoughtPanel
-                    quote={attachingQuote}
-                    onSave={handleSaveNote}
-                    onCancel={() => setAttachingQuote(null)}
-                    saving={savingNote}
-                  />
-                )}
-              </div>
+              <p
+                key={i}
+                className={`text-[15px] leading-[1.85] text-foreground mb-5 cursor-text transition-colors ${
+                  isHighlighted ? "bg-primary/8 -mx-1 px-1 rounded" : ""
+                } ${i === 0 ? "first-letter:text-3xl first-letter:font-bold first-letter:float-left first-letter:mr-2 first-letter:mt-1 first-letter:leading-none" : ""}`}
+              >
+                {para}
+              </p>
             )
           })}
+          {attachingQuote && (
+            <AttachThoughtPanel
+              quote={attachingQuote}
+              onSave={handleSaveNote}
+              onCancel={() => setAttachingQuote(null)}
+              saving={savingNote}
+            />
+          )}
         </div>
 
         <div className="pt-6 border-t border-border">
@@ -234,7 +239,7 @@ function ArticleDetail({ article, onBack }: ArticleDetailProps) {
       </div>
 
       {tooltip && (
-        <SelectionTooltip x={tooltip.x} y={tooltip.y} onAttach={handleAttach} />
+        <SelectionTooltip x={tooltip.x} y={tooltip.y} onAttach={handleAttach} tooltipRef={tooltipRef} />
       )}
     </div>
   )
